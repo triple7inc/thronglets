@@ -1,0 +1,15 @@
+{
+    "grid_width":100,
+    "grid_height":100,
+    "generations":200,
+    "max_population":0,
+    "population_size":200,
+    "ticks_per_generation":30,
+    "fire_event_chance":0.5,
+    "rock_event_chance":0.2,
+    "fire_event_radius":2,
+    "rock_event_radius":1,
+    "fire_event_max_damage":20,
+    "mutation_chance":0.1,
+    "logs_directory":"logs"
+}

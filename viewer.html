@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Thronglet Viewer</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <style>
+        #loading{display:none}
+        .dead{background:#333;}
+        .alive{background:#0f0;color:black;}
+        .cell.fire{background:red;color:black;}
+        .new-child{background:blue;color:white;}
+        .cell.rock{background:white;color:black;}
+        .near-death{background:yellow;color:black;}
+        .controls,#controls{display:none;gap:10px;align-items:center;}
+        #stats{white-space:pre;font-family:monospace;text-align:left;}
+        #grid{display:none;gap:1px;background:#ccc;border:1px solid #ccc;position:relative;margin-top:1.5em;}
+        body{background:#333;color:#ccc;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;gap:10px;}
+        .cell{width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;position:relative;}
+        #tooltip{position:absolute;display:none;background:#222;padding:5px;border:1px solid #aaa;color:#fff;font-size:12px;z-index:10;pointer-events:none;}
+        button{
+            width:90px;
+            border:none;
+            color:#fff;
+            font-size:1em;
+            cursor:pointer;
+            font-weight:500;
+            margin-left:.75em;
+            padding:.75em 1.5em;
+            background:#2e86de;
+            transition:all .1s linear;
+            box-shadow:4px 4px 0 #1b4f72;
+        }
+        button:active{
+            transform:translate(2px,2px);
+            box-shadow:2px 2px 0 #1b4f72;
+        }
+        input[type=file]::file-selector-button{
+            box-shadow:4px 4px 0 #1b4f72;
+            transition:all .1s linear;
+            background:#2e86de;
+            padding:.75em 1.5em;
+            margin-right:1em;
+            font-weight:500;
+            cursor:pointer;
+            font-size:1em;
+            color:#fff;
+            border:none;
+            width:90px;
+        }
+        input[type=file]::file-selector-button:active{
+            box-shadow:2px 2px 0 #1b4f72;
+            transform:translate(2px,2px);
+        }
+    </style>
+</head>
+<body>
+    <h1>Thronglet Simulation Viewer</h1>
+    <input type="file" id="zipInput" accept=".zip">
+    <div id="controls" class="controls">
+        <button id="playBtn">Play</button>
+        <input type="range" id="genSlider" min="1" step="1">
+        <span id="genLabel"></span>
+    </div>
+    <div id="controls1" class="controls" style="min-width:286px">
+        <button onclick="exportChunks(generations)">Export</button>
+    </div>
+    <h2 id="loading">Loading...</h2>
+    <div id="grid"></div>
+    <div id="tooltip"></div>
+    <div id="stats"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        let generations={},gridWidth=20,gridHeight=20,interval=null,fireEvents={},rockEvents={},fireRadius=2,rockRadius=1,world="w0"
+
+        const zipInput=document.getElementById('zipInput')
+        const grid=document.getElementById('grid')
+        const slider=document.getElementById('genSlider')
+        const label=document.getElementById('genLabel')
+        const playBtn=document.getElementById('playBtn')
+        const stats=document.getElementById('stats')
+        const tooltip=document.getElementById('tooltip')
+        const loading=document.getElementById('loading')
+        const controls=document.getElementById('controls')
+        const controls1=document.getElementById('controls1')
+
+        function renderGeneration(genNum){
+            grid.innerHTML=''
+            grid.style.display="grid"
+            loading.style.display="none"
+            controls.style.display="flex"
+            controls1.style.display="flex"
+            const data=generations[genNum]
+            grid.style.gridTemplateColumns=`repeat(${gridWidth},20px)`
+            const cells=Array(gridWidth*gridHeight).fill().map(_=>{
+                const div=document.createElement('div')
+                div.className='cell dead'
+                return div
+            })
+            let groupCount=new Set(),relCount=0
+            data.forEach(t=>{
+                const idx=t.y*gridWidth+t.x
+                if(!cells[idx])return
+                let cls='cell alive'
+                if(t.hp<=20)cls='cell near-death'
+                if(t.age!==undefined&&t.age<=1)cls='cell new-child'
+                cells[idx].className=cls
+                cells[idx].style.cursor="pointer"
+                cells[idx].textContent=t.group_id!==undefined&&t.group_id>=0?t.group_id:''
+                cells[idx].onmouseenter=e=>{
+                    tooltip.style.display='block'
+                    tooltip.innerHTML=`HP: ${t.hp}<br>Food: ${t.food}<br>Water: ${t.water}<br>Age: ${t.age} yrs<br>Speed: ${t.speed}<br>X: ${t.x}<br>Y: ${t.y}<br>Group: ${t.group_id}<br>Relationships: ${Object.keys(t.relationships||{}).length}`
+                }
+                cells[idx].onmousemove=e=>{
+                    tooltip.style.left=(e.pageX+10)+'px'
+                    tooltip.style.top=(e.pageY+10)+'px'
+                }
+                cells[idx].onmouseleave=()=>tooltip.style.display='none'
+                if(t.group_id!==undefined)groupCount.add(t.group_id)
+                if(t.relationships)relCount+=Object.keys(t.relationships).length
+            })
+            const markEvent=(x,y,cls)=>{
+                for(let dy=-cls.r;dy<=cls.r;dy++){
+                    for(let dx=-cls.r;dx<=cls.r;dx++){
+                        const nx=x+dx,ny=y+dy
+                        if(nx<0||ny<0||nx>=gridWidth||ny>=gridHeight)continue
+                        const idx=ny*gridWidth+nx
+                        if(!cells[idx])continue
+                        cells[idx].className=cls.name
+                    }
+                }
+                const idx=y*gridWidth+x
+                if(cells[idx])cells[idx].textContent='X'
+            }
+            if(fireEvents[genNum])fireEvents[genNum].forEach(([x,y])=>markEvent(x,y,{name:'cell fire',r:fireRadius}))
+            if(rockEvents[genNum])rockEvents[genNum].forEach(([x,y])=>markEvent(x,y,{name:'cell rock',r:rockRadius}))
+            cells.forEach(cell=>grid.appendChild(cell))
+            label.textContent=`Gen ${genNum}`
+            slider.value=genNum
+            const alive=data.length
+            const hpAvg=(data.reduce((a,t)=>a+t.hp,0)/alive).toFixed(2)
+            const speedAvg=(data.reduce((a,t)=>a+t.speed,0)/alive).toFixed(2)
+            const ageAvg=(data.reduce((a,t)=>a+t.age,0)/alive).toFixed(2)
+            const relAvg=Math.round(relCount/alive)
+            const topSocial=data.sort((a,b)=>Object.keys(b.relationships||{}).length-Object.keys(a.relationships||{}).length).slice(0,3)
+            let topLines=''
+            topSocial.forEach((t,i)=>{
+                topLines+=`  Social[${i}] HP:${t.hp} Rel:${Object.keys(t.relationships||{}).length} Group:${t.group_id}\n`
+            })
+            stats.textContent=`Population: ${alive}\nAvg HP: ${hpAvg}, Avg Speed: ${speedAvg}, Avg Age: ${ageAvg}\nGroups: ${groupCount.size}, Avg Relationships: ${relAvg}\n${topLines}`
+        }
+
+        function startPlayback(){
+            let current=parseInt(slider.value)
+            const max=parseInt(slider.max)
+            interval=setInterval(()=>{
+                if(current>max){clearInterval(interval);return}
+                renderGeneration(current++)
+            },Object.keys(generations).length>250?250:500)
+        }
+
+        playBtn.onclick=()=>{
+            if(interval){clearInterval(interval);interval=null;playBtn.textContent='Play'}
+            else{startPlayback();playBtn.textContent='Stop'}
+        }
+
+        slider.oninput=e=>renderGeneration(e.target.value)
+
+        zipInput.onchange=async e=>{
+            generations={}
+            stats.innerHTML=""
+            grid.style.display="none"
+            loading.style.display="block"
+            controls.style.display="none"
+            controls1.style.display="none"
+            const zipFile=e.target.files[0]
+            const zip=await JSZip.loadAsync(zipFile)
+            world=zipFile.name.split(".").slice(0,-1).join(".")
+            if(zip.files['final_config.json']){
+                const configText=await zip.files['final_config.json'].async('text')
+                const config=JSON.parse(configText)
+                if(config.grid_width)gridWidth=config.grid_width
+                if(config.grid_height)gridHeight=config.grid_height
+                if(config.fire_event_radius)fireRadius=config.fire_event_radius
+                if(config.rock_event_radius)rockRadius=config.rock_event_radius
+            }
+            if(zip.files['fires.json'])fireEvents=JSON.parse(await zip.files['fires.json'].async('text'))
+            if(zip.files['rocks.json'])rockEvents=JSON.parse(await zip.files['rocks.json'].async('text'))
+            const entries=Object.keys(zip.files).filter(k=>k.startsWith('generation_')&&k.endsWith('.json')).sort((a,b)=>parseInt(a.match(/\d+/)[0])-parseInt(b.match(/\d+/)[0]))
+            for(const name of entries){
+                const text=await zip.files[name].async('text')
+                const data=JSON.parse(text)
+                const num=parseInt(name.match(/\d+/)[0])
+                generations[num]=data
+            }
+            slider.min=1
+            slider.max=entries.length
+            ///let compressed=pako.deflate(JSON.stringify(generations))
+            ///saveData("generations",compressed)
+            renderGeneration(1)
+        }
+        document.onload=()=>{
+            /*
+            loadData("generations",d=>{
+                try{
+                    generations=JSON.parse(pako.inflate(data,{to:"string"}))
+                    if(Object.keys(generations).length!=0)renderGeneration(1)
+                }catch(ex){}
+            })
+            */
+        }
+        function exportCompressedInWorker(data){
+            let worker=new Worker("compress-worker.js")
+            worker.onmessage=e=>{
+                if(e.data.error){
+                    console.error("Compression failed:",e.data.error)
+                    return
+                }
+                let blob=new Blob([e.data],{type:"application/octet-stream"})
+                let a=document.createElement("a")
+                a.href=URL.createObjectURL(blob)
+                a.download=world+".bin"
+                a.click()
+                worker.terminate()
+            }
+            worker.postMessage(data)
+        }
+        function exportChunks(data){
+            let chunkSize=1000
+            let keys=Object.keys(data)
+            let worker=new Worker("compress-worker.js")
+            let parts=[]
+            let i=0
+
+            worker.onmessage=e=>{
+                if(e.data.error){
+                    console.error("Compression failed:",e.data.error)
+                    return
+                }
+                parts.push(e.data)
+                i+=chunkSize
+                if(i<keys.length)sendChunk()
+                else{
+                    let blob=new Blob(parts,{type:"application/octet-stream"})
+                    let a=document.createElement("a")
+                    a.href=URL.createObjectURL(blob)
+                    a.download=world+".bin"
+                    a.click()
+                    worker.terminate()
+                }
+            }
+
+            function sendChunk(){
+                let chunk={}
+                keys.slice(i,i+chunkSize).forEach(k=>chunk[k]=data[k])
+                worker.postMessage(chunk)
+            }
+
+            sendChunk()
+        }
+        function saveData(key,data){
+            let req=indexedDB.open("thronglets")
+            req.onupgradeneeded=e=>{
+                e.target.result.createObjectStore("genStore")
+            }
+            req.onsuccess=e=>{
+                let db=e.target.result
+                let tx=db.transaction("genStore","readwrite")
+                tx.objectStore("genStore").put(data,key)
+            }
+        }
+        function loadData(key,cb){
+            let req=indexedDB.open("thronglets")
+            req.onsuccess=e=>{
+                let db=e.target.result
+                let tx=db.transaction("genStore","readonly")
+                tx.objectStore("genStore").get(key).onsuccess=e=>cb(e.target.result)
+            }
+        }
+    </script>
+</body>
+</html>
