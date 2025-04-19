@@ -79,9 +79,36 @@ Zip logs are automatically created. Open them in the viewer.
 
 ---
 
-## 📁 Log Output
-Each generation is saved in `logs/` as `generation_X.json`.
-Other files include:
+## 📁 File Structure
+```
+Thronglets/
+├── config.json
+├── simulation.py
+├── behavior.py
+├── traits.py
+├── thronglet.py
+├── social.py
+├── groups.py
+├── utils.py
+├── viewer.html
+├── compress-worker.js
+├── logs/
+│   ├── generation_1.json
+│   ├── generation_2.json
+│   ├── ...
+│   ├── final_state.json
+│   ├── final_config.json
+│   ├── fires.json
+│   ├── rocks.json
+│   └── logs.zip
+├── README.md
+└── LICENSE
+```
+
+---
+
+## 📜 Log Output
+Each generation is saved in `logs/` as `generation_X.json`. Other files include:
 
 - `final_state.json`: End-of-sim snapshot
 - `final_config.json`: Final config used
@@ -89,11 +116,12 @@ Other files include:
 
 ---
 
-## 📜 License
+## 📋 License
 This project is open for research and educational purposes. Created by humans. Inspired by fiction.
 
 MIT License
 
+```
 Copyright (c) 2025 triple7inc
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -113,6 +141,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
 
 ---
 
